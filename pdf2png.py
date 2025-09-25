@@ -1,4 +1,28 @@
-# 導入我們需要的函式庫
+# ===================================================================
+# pdf2png.py
+#
+# 核心功能 (Core Features):
+#   - 將指定的 PDF 檔案逐頁轉換為 PNG 影像。
+#   - 可指定 Poppler 的執行路徑 (Windows 必須提供)。
+#   - 支援多執行緒加速 (thread_count 參數)。
+#
+# 運行流程 (Execution Flow):
+#   1. 設定：
+#        - Poppler 安裝路徑 (poppler_path)。
+#        - 輸入 PDF 檔案名稱 (pdf_filename)。
+#        - 輸出資料夾名稱 (output_folder)。
+#
+#   2. 檢查輸入檔案與輸出資料夾：
+#        - 若 output_folder 不存在則建立。
+#        - 若找不到 PDF 檔案則報錯並結束。
+#
+#   3. PDF → 圖片轉換：
+#        - 使用 pdf2image.convert_from_path() 轉換為 PIL Image。
+#        - 每頁依序輸出為 PNG，命名為 page_001.png, page_002.png, ...
+#
+#   4. 完成：
+#        - 顯示轉換進度與輸出結果。
+# ===================================================================
 import os
 from pdf2image import convert_from_path
 

@@ -1,9 +1,34 @@
 # ===================================================================
-# preprocess_pages.py (v12.2 - 修正 OSD 信心度讀取錯誤)
+# preprocess_pages.py
 #
-# 核心修改:
-# 1. 修改 correct_orientation 函式，使用更穩健的 .get() 方法來讀取 OSD 信心度。
-# 2. 這可以避免因 Tesseract 版本不同或圖片內容問題，導致 'confidence' 鍵不存在而使程式崩潰。
+# 核心功能 (Core Features):
+#   - 自動將 PDF (補習班生字練習簿等) 轉換為逐頁 PNG。
+#   - 方向校正：
+#       * 多重檢查 (標籤列 OCR → 全圖 OCR → 空白率 → Tesseract OSD)。
+#       * 自動判斷是否需要 180° 旋轉，避免倒置。
+#   - Debug 輔助：會輸出帶有旋轉資訊的圖片到 debug_steps/。
+#
+# 運行流程 (Execution Flow):
+#   1. 初始化環境：
+#        - 確認輸入 PDF 是否存在。
+#        - 建立輸出資料夾 data/... 和 debug_steps/。
+#        - 若已存在舊檔案則清空。
+#
+#   2. PDF 轉換：
+#        - 使用 pdf2image 將 PDF 每頁轉為 PIL Image。
+#        - 轉為 OpenCV 格式 (BGR) 以利處理。
+#
+#   3. 頁面校正：
+#        - correct_orientation(): 多步驟串聯判斷，決定是否需要旋轉。
+#        - correct_skew(): (已移除，保留介面)。
+#
+#   4. 儲存：
+#        - 每頁輸出兩份：
+#            * 校正後 PNG → data/cramschool_merged/
+#            * 附註旋轉角度的 debug 圖片 → debug_steps/
+#
+#   5. 完成：
+#        - 輸出處理狀態與完成訊息。
 # ===================================================================
 import os
 import cv2
