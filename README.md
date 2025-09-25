@@ -66,6 +66,8 @@ If you want to use this project, please prepare your **own scanned worksheets or
 
 ## 🔄 Processing Flow
 
+
+```mermaid
 flowchart TD
     A[Scanned PDF/PNG Pages] --> B[Preprocessing (pdf2png, preprocess_pages)]
     B --> C[Grid Detection (Contours / Hough / Projection)]
@@ -73,6 +75,7 @@ flowchart TD
     D --> E[Dynamic Blank Check (multi-feature)]
     E --> F[Save Cropped Handwriting Images]
     F --> G[Statistics Report]
+
 
 ---
 
