@@ -78,19 +78,16 @@ CHR_classifier
 
 
 ```mermaid
+
 flowchart TD
-    A[Scanned PDF/PNG Pages] --> B[Preprocessing (pdf2png, preprocess_pages)]
+    A[Scanned PDF/PNG Pages] --> B["Preprocessing: pdf2png & preprocess_pages"]
+    B --> C["Grid Detection: Contours / Hough / Projection"]
+    C --> D["Label Row OCR + Whitelist Inference"]
+    D --> E["Dynamic Blank Check (multi-feature)"]
+    E --> F["Save Cropped Handwriting Images"]
+    F --> G["Statistics Report"]
 
-    B --> C[Grid Detection (Contours / Hough / Projection)]
 
-    C --> D[Label Row OCR + Whitelist Inference]
-
-    D --> E[Dynamic Blank Check (multi-feature)]
-
-    E --> F[Save Cropped Handwriting Images]
-
-    F --> G[Statistics Report]
-    
 ```
 
 
