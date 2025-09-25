@@ -93,12 +93,13 @@ python CHR_classifier.py
 ```mermaid
 
 flowchart TD
-    A[掃描的 PDF/PNG 頁面] --> B[前處理 (pdf2png, preprocess_pages)]
-    B --> C[格子偵測 (輪廓 / 霍夫 / 投影)]
-    C --> D[標籤列 OCR + 白名單推斷]
-    D --> E[動態空白檢查 (多重特徵)]
-    E --> F[切割並儲存手寫字跡]
-    F --> G[統計報告]
+    A[掃描的 PDF 或 PNG 頁面] --> B["前處理：pdf2png 與 preprocess_pages"]
+    B --> C["格子偵測：輪廓、霍夫、投影"]
+    C --> D["標籤列 OCR ＋ 白名單推斷"]
+    D --> E["動態空白檢查：多重特徵"]
+    E --> F["切割並儲存手寫字跡"]
+    F --> G["統計報告"]
+
 
 ```
 
