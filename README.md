@@ -32,12 +32,19 @@ If you want to use this project, please prepare your **own scanned worksheets or
 
 ## 🗂 File Structure
 ├── CHR_classifier.py # Main OCR pipeline
+
 ├── debug_grid.py # Grid detection debugger
+
 ├── pdf2png.py # Convert PDF to PNG if needed
+
 ├── preprocess_pages.py # Page preprocessing utility
+
 ├── whitelist.txt # Character whitelist
+
 ├── data/ # folder originally put each page as .png file
+
 └── pdf/ # folder originally put the pages as .pdf file
+
 └── datasets/ to output the folders of result
 
 
@@ -75,7 +82,7 @@ flowchart TD
     D --> E[Dynamic Blank Check (multi-feature)]
     E --> F[Save Cropped Handwriting Images]
     F --> G[Statistics Report]
-
+```
 
 ---
 
