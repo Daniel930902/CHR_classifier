@@ -61,12 +61,70 @@ import math
 
 # --- 1. 環境設定 ---
 
+target_name = "250928"   # 可以手動指定，例如 "250928"；若留空 "" 則處理 data/ 下所有子資料夾
+
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 script_dir = os.path.dirname(os.path.abspath(__file__))
-PAGES_DIR = os.path.join(script_dir, "data", "cramschool_merged")
-OUTPUT_DIR = os.path.join( "E:\datasets", "cramschool_merged")
+DATA_DIR = os.path.join(script_dir, "data")
+OUTPUT_DIR = os.path.join( "E:\datasets", target_name )
 DEBUG_DIR = os.path.join(script_dir, "debug_steps")
 WHITELIST_FILE = os.path.join(script_dir, "whitelist.txt")
+
+# --- 2. 確定要處理的資料夾 ---
+if target_name:
+    target_dirs = [os.path.join(DATA_DIR, target_name)]
+    print(f"✔ 僅處理指定的子資料夾: {target_name}")
+else:
+    # 找出 data/ 下所有子資料夾
+    target_dirs = [os.path.join(DATA_DIR, d) for d in os.listdir(DATA_DIR) if os.path.isdir(os.path.join(DATA_DIR, d))]
+    print(f"✔ 未指定 target_name，將遍歷 data/ 下 {len(target_dirs)} 個子資料夾")
+
+if not target_dirs:
+    print("❌ 錯誤: 沒有找到可用的資料夾")
+    sys.exit(1)
+
+# --- 3. 遍歷並重新命名 ---
+all_page_files = []
+
+for tdir in target_dirs:
+    image_files = [f for f in os.listdir(tdir) if f.lower().endswith(('.jpg', '.png'))]
+    image_files.sort()
+
+    if not image_files:
+        print(f"⚠️ 警告: {tdir} 中沒有找到圖片，跳過。")
+        continue
+
+    print(f"\n📂 正在處理資料夾: {os.path.basename(tdir)}，找到 {len(image_files)} 張圖片")
+
+    # 重新命名為 001.png, 002.png ...
+    for idx, fname in enumerate(image_files, start=1):
+        old_path = os.path.join(tdir, fname)
+        new_name = f"{idx:03d}.png"  # 統一轉成 PNG
+        new_path = os.path.join(tdir, new_name)
+
+        # 如果原本就是同名 PNG，則跳過 rename
+        if fname == new_name:
+            all_page_files.append(new_path)
+            continue
+
+        img = cv2.imread(old_path)
+        if img is None:
+            print(f"  -> 警告: 無法讀取 {old_path}，跳過。")
+            continue
+
+        cv2.imwrite(new_path, img)
+        os.remove(old_path)  # 刪掉舊檔案，避免重複
+        all_page_files.append(new_path)
+        print(f"  -> 已重新命名 {fname} → {new_name}")
+
+print(f"\n✔ 全部圖片重新編號完成，總計 {len(all_page_files)} 張可供分析。")
+
+# 統一分析來源 (這裡保留原本 target 模式邏輯)
+if target_name:
+    PAGES_DIR = os.path.join(DATA_DIR, target_name)
+else:
+    # 如果處理多個資料夾，就暫時用第一個，後面流程自己可遍歷 all_page_files
+    PAGES_DIR = DATA_DIR
 
 # --- 2. 讀取並載入白名單 ---
 
@@ -114,8 +172,72 @@ os.makedirs(DEBUG_DIR, exist_ok=True)
 
 # ======================== 核心工具函式 =========================
 
+def evaluate_grid_boxes(grid_boxes, expected_count=99, tol=15):
+    """
+    評估格子偵測的效果，回傳分數
+    - 分數1: 數量接近度 (越接近 expected_count 越好)
+    - 分數2: 規則性 (格子寬高一致性)
+    """
+    if not grid_boxes: 
+        return -1
+    
+    count = len(grid_boxes)
+    # 分數1: 數量接近度
+    score_count = max(0, 1 - abs(count - expected_count) / expected_count)
+
+    # 分數2: 排列規則性 (寬高變異度越小越好)
+    widths = [w for (_,_,w,h) in grid_boxes]
+    heights = [h for (_,_,w,h) in grid_boxes]
+    if not widths or not heights: 
+        return score_count
+    
+    w_cv = np.std(widths) / (np.mean(widths)+1e-6)
+    h_cv = np.std(heights) / (np.mean(heights)+1e-6)
+    score_shape = max(0, 1 - (w_cv + h_cv))  
+
+    return 0.7*score_count + 0.3*score_shape
+
+
+def adaptive_find_grid_boxes(image):
+    """
+    三通道格子偵測 (Contours / Hough / Projection)
+    自動調整參數以最大化覆蓋率
+    """
+    best_boxes, best_score = [], -1
+    params_candidates = [
+        # min_area, max_area, min_ratio, max_ratio
+        {'min_area': 35000, 'max_area': 65000, 'min_ratio': 0.85, 'max_ratio': 1.15, 'cluster_thresh': 30},
+        {'min_area': 45000, 'max_area': 60000, 'min_ratio': 0.90, 'max_ratio': 1.10, 'cluster_thresh': 40},
+        {'min_area': 30000, 'max_area': 70000, 'min_ratio': 0.80, 'max_ratio': 1.20, 'cluster_thresh': 50},
+    ]
+
+    # 通道一 Contours
+    for p in params_candidates:
+        boxes = find_grid_boxes_by_contours(image, p)
+        score = evaluate_grid_boxes(boxes)
+        if score > best_score:
+            best_boxes, best_score = boxes, score
+
+    # 通道二 Hough
+    for p in params_candidates:
+        boxes = find_grid_boxes_by_hough(image, p)
+        score = evaluate_grid_boxes(boxes)
+        if score > best_score:
+            best_boxes, best_score = boxes, score
+
+    # 通道三 Projection
+    for p in params_candidates:
+        boxes = find_grid_boxes_by_projection(image, p)
+        score = evaluate_grid_boxes(boxes)
+        if score > best_score:
+            best_boxes, best_score = boxes, score
+
+    print(f"  -> 自適應格子偵測: 最佳格子數 {len(best_boxes)}，評分 {best_score:.3f}")
+    return best_boxes
+
+
 def prepare_roi_for_ocr(full_img, box):
-    """為 OCR 準備高品質的 ROI"""
+    """為 OCR 準備高品質的 ROI（多版本二值化，挑信心度最佳的）"""
     x, y, w, h = box
     roi = full_img[y:y+h, x:x+w]
     m = int(min(h, w) * 0.12)
@@ -123,25 +245,79 @@ def prepare_roi_for_ocr(full_img, box):
         roi = roi[m:h-m, m:w-m]
 
     g = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-    g = cv2.bilateralFilter(g, 9, 75, 75)
-    g = cv2.resize(g, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-    _, b = cv2.threshold(g, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    if np.mean(b) < 127: b = cv2.bitwise_not(b)
-    b = cv2.copyMakeBorder(b, 20, 20, 20, 20, cv2.BORDER_CONSTANT, value = 255 )
-    return b
+    g = cv2.bilateralFilter(g, 9, 50, 50)
+
+    # CLAHE 增強
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+    g = clahe.apply(g)
+
+    # 多版本二值化
+    versions = []
+    _, b1 = cv2.threshold(g, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    b2 = cv2.adaptiveThreshold(g, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+                               cv2.THRESH_BINARY, 27, 10)
+    b3 = cv2.adaptiveThreshold(g, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                               cv2.THRESH_BINARY, 27, 10)
+    versions.extend([b1, b2, b3])
+
+    # 嘗試 OCR，挑信心度最高的版本
+    best_img, best_conf = None, -1
+    cfg = "--oem 3 --psm 8"
+    for v in versions:
+        if np.mean(v) < 127:  
+            v = cv2.bitwise_not(v)
+        v = cv2.copyMakeBorder(v, 20, 20, 20, 20,
+                               cv2.BORDER_CONSTANT, value=255)
+
+        try:
+            data = pytesseract.image_to_data(
+                v, lang='chi_tra', config=cfg, output_type=pytesseract.Output.DICT
+            )
+            confs = [int(c) for i, c in enumerate(data['conf'])
+                     if int(c) > -1 and data['text'][i].strip()]
+            mean_conf = float(np.mean(confs)) if confs else 0.0
+            if mean_conf > best_conf:
+                best_img, best_conf = v, mean_conf
+        except:
+            continue
+
+    return best_img if best_img is not None else versions[0]
+
+
 
 def ocr_char_and_conf(img_bin):
-    """對單一 ROI 進行 OCR，回傳(字元, 信心度)"""
-    cfg = "--oem 1 --psm 10"
-    data = pytesseract.image_to_data(img_bin, lang='chi_tra', config=cfg, output_type=pytesseract.Output.DICT)
+    """
+    對單一 ROI 進行 OCR。
+    如果 img_bin 是 list，會嘗試多版本，取信心度最高的結果。
+    回傳 (字元, 信心度)
+    """
+    cfg = "--oem 3 --psm 8"  # 改成更穩定的組合
+    candidates = []
 
-    confs = [int(c) for i, c in enumerate(data['conf']) if int(c) > -1 and data['text'][i].strip()]
-    text = "".join(t for t in data['text'] if t.strip())
-    char = "".join(c for c in text if '\u4e00' <= c <= '\u9fff')
+    # 如果是單一影像，包成 list 統一處理
+    if not isinstance(img_bin, list):
+        img_bin = [img_bin]
 
-    final_char = char[0] if char else ""
-    mean_conf = float(np.mean(confs)) if confs else 0.0
-    return final_char, mean_conf
+    for img in img_bin:
+        try:
+            data = pytesseract.image_to_data(
+                img, lang='chi_tra', config=cfg, output_type=pytesseract.Output.DICT
+            )
+            confs = [int(c) for i, c in enumerate(data['conf']) if int(c) > -1 and data['text'][i].strip()]
+            text = "".join(t for t in data['text'] if t.strip())
+            char = "".join(c for c in text if '\u4e00' <= c <= '\u9fff')
+            final_char = char[0] if char else ""
+            mean_conf = float(np.mean(confs)) if confs else 0.0
+            candidates.append((final_char, mean_conf))
+        except Exception as e:
+            print(f"⚠️ OCR 錯誤: {e}")
+            continue
+
+    if not candidates:
+        return "", 0.0
+    # 取信心度最高的版本
+    return max(candidates, key=lambda x: x[1])
+
 
 def _persistence_mask(gray, ksizes=(25, 41), min_keep=2):
     """
@@ -192,7 +368,7 @@ def _stroke_stats(gray):
 
 
 def is_label_blank_ultra_strict(gray,
-                                std_thresh=28,
+                                std_thresh = 20,
                                 union_ink_ratio_min=0.040,
                                 persistence_min=0.70,
                                 edge_density_min=0.012,
@@ -229,7 +405,7 @@ def is_grid_blank_dynamically(gray,
                               n_cc_min=1,
                               max_cc_area_ratio_min=0.004):
     """
-    (v16.7.0) 基於多重特徵的動態空白檢查，專為手寫字跡設計。
+    基於多重特徵的動態空白檢查，專為手寫字跡設計。
     此機制與標籤列的 is_label_blank_ultra_strict 邏輯相同，但閥值針對手寫特性調整。
     核心是透過筆畫持久度、邊緣密度、連通元件等多維度特徵來判斷「筆畫量」，
     而非單純的墨水比例，能更準確地分辨微弱/潦草字跡與純粹的雜訊/空白。
@@ -281,8 +457,8 @@ def find_grid_boxes_by_contours(image, params):
 def find_grid_boxes_by_hough(image, params):
     """通道二：霍夫直線變換法 (Fallback)"""
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    denoised_gray = cv2.medianBlur(gray, 3)
-    edges = cv2.Canny( denoised_gray, 50, 100, apertureSize = 3 )
+    denoised_gray = cv2.medianBlur( gray, 3) 
+    edges = cv2.Canny( denoised_gray, 25, 80, apertureSize = 3 )
     lines = cv2.HoughLinesP( edges, 1, np.pi / 180, 
                              threshold = 110, 
                              minLineLength = int( image.shape[0]//4 ),
@@ -353,32 +529,56 @@ def find_grid_boxes_by_projection(image, params):
     return proj_boxes
 
 def find_grid_boxes(image):
-    """三通道格子偵測系統"""
-    params = {'min_area': 45000, 'max_area': 65000, 'min_ratio': 0.85, 'max_ratio': 1.10, 'cluster_thresh': 50 }
+    """
+    三通道格子偵測 (Contours / Hough / Projection)
+    每個通道內自動挑出最佳參數，再三通道比較，輸出最終最佳結果
+    """
+    params_candidates = [
+        {'min_area': 35000, 'max_area': 65000, 'min_ratio': 0.85, 'max_ratio': 1.15, 'cluster_thresh': 30},
+        {'min_area': 45000, 'max_area': 60000, 'min_ratio': 0.90, 'max_ratio': 1.10, 'cluster_thresh': 40},
+        {'min_area': 30000, 'max_area': 70000, 'min_ratio': 0.80, 'max_ratio': 1.20, 'cluster_thresh': 50},
+    ]
 
-    # 通道一
-    print("  -> [通道 1] 執行輪廓分析法...")
-    grid_boxes = find_grid_boxes_by_contours(image, params)
-    if len(grid_boxes) >= 99:
-        print(f"  -> [通道 1] 成功找到 {len(grid_boxes)} 個格子。")
-        return grid_boxes
+    # --- 通道一 Contours ---
+    print("  -> [通道 1] 輪廓分析法嘗試中...")
+    best_contours, best_score_contours = [], -1
+    for p in params_candidates:
+        boxes = find_grid_boxes_by_contours(image, p)
+        score = evaluate_grid_boxes(boxes)
+        if score > best_score_contours:
+            best_contours, best_score_contours = boxes, score
+    print(f"     最佳參數下找到 {len(best_contours)} 格子 (score={best_score_contours:.3f})")
 
-    # 通道二
-    print(f"  -> [通道 1] 失敗 (只找到 {len(grid_boxes)} 個格子)，切換至 [通道 2] Hough 直線變換法...")
-    grid_boxes_hough = find_grid_boxes_by_hough(image, params)
-    if len(grid_boxes_hough) > len(grid_boxes):
-        print(f"  -> [通道 2] 找到了更多格子 ({len(grid_boxes_hough)})，採用其結果。")
-        grid_boxes = grid_boxes_hough
-    if len(grid_boxes) >= 99: return grid_boxes
+    # --- 通道二 Hough ---
+    print("  -> [通道 2] Hough 直線變換法嘗試中...")
+    best_hough, best_score_hough = [], -1
+    for p in params_candidates:
+        boxes = find_grid_boxes_by_hough(image, p)
+        score = evaluate_grid_boxes(boxes)
+        if score > best_score_hough:
+            best_hough, best_score_hough = boxes, score
+    print(f"     最佳參數下找到 {len(best_hough)} 格子 (score={best_score_hough:.3f})")
 
-    # 通道三
-    print(f"  -> [通道 2] 失敗 (只找到 {len(grid_boxes)} 個格子)，切換至 [通道 3] 投影剖面法...")
-    grid_boxes_proj = find_grid_boxes_by_projection(image, params)
-    if len(grid_boxes_proj) > len(grid_boxes):
-        print(f"  -> [通道 3] 找到了更多格子 ({len(grid_boxes_proj)})，採用其結果。")
-        grid_boxes = grid_boxes_proj
-        
-    return grid_boxes
+    # --- 通道三 Projection ---
+    print("  -> [通道 3] 投影剖面法嘗試中...")
+    best_proj, best_score_proj = [], -1
+    for p in params_candidates:
+        boxes = find_grid_boxes_by_projection(image, p)
+        score = evaluate_grid_boxes(boxes)
+        if score > best_score_proj:
+            best_proj, best_score_proj = boxes, score
+    print(f"     最佳參數下找到 {len(best_proj)} 格子 (score={best_score_proj:.3f})")
+
+    # --- 三通道最終比較 ---
+    candidates = [
+        ("Contours", best_contours, best_score_contours),
+        ("Hough", best_hough, best_score_hough),
+        ("Projection", best_proj, best_score_proj)
+    ]
+    best_method, best_boxes, best_score = max(candidates, key=lambda x: x[2])
+
+    print(f"  -> ✅ 最終採用 {best_method}，共 {len(best_boxes)} 個格子 (score={best_score:.3f})")
+    return best_boxes
 
 # ========================= 自動化預處理檢查 =========================
 
@@ -406,7 +606,7 @@ else:
 
 print("\n⏳ 開始分析已校正的圖片並切割字跡...")
 char_counters = {}
-page_files = sorted([f for f in os.listdir(PAGES_DIR) if f.endswith('.png')])
+page_files = sorted([f for f in os.listdir(PAGES_DIR) if f.endswith('.png')])   ## 預設　PNG 檔
 
 # 全局統計變數
 total_pages_processed = 0
@@ -430,6 +630,11 @@ for page_idx, page_filename in enumerate(page_files):
     if image is None:
         print(f"  -> 無法讀取圖片 {page_filename}，跳過。")
         continue
+
+    # === 放大預處理 ===
+    SCALE_FACTOR = 1.55   # 可以調整 1.2 ~ 2.0 之間，建議不要太大
+    image = cv2.resize(image, None, fx=SCALE_FACTOR, fy=SCALE_FACTOR, interpolation=cv2.INTER_CUBIC)
+
     total_pages_processed += 1
 
     # === 步驟 1: 三通道格子偵測 ===
