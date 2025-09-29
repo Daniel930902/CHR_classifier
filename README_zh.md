@@ -61,9 +61,9 @@ CHR_classifier
 
 ## 🔧 系統需求
 - Python 3.8+
-- [OpenCV](https://opencv.org/)
-- NumPy
-- [PyTesseract](https://github.com/madmaze/pytesseract)  
+- [opencv-python>=4.5.0](https://opencv.org/)
+- numpy>=1.21.0
+- [pytesseract>=0.3.10](https://github.com/madmaze/pytesseract)
 
   ⚠️ **重要**：必須在本地安裝 **Tesseract OCR**，並於程式中設定正確路徑，例如：  
 
@@ -74,17 +74,35 @@ CHR_classifier
 
 ## 🚀 使用方法
 
-1. 將掃描後的 PNG 頁面放入 data/cramschool_merged/。
+1. Clone 這份 repository:
+   ```bash
+   git clone https://github.com/Daniel930902/CHR_classifier
+   ```
 
-（⚠️ 因原始補習班資料不公開，請使用 自有資料）
+2. 準備資料，將掃描過的 PDF 檔放入 pdf/ 資料夾，或者，將轉換後的 PNG 頁面放入 data/{pdf_name}/ 資料夾。(兩者擇一即可)
 
-2. 編輯 whitelist.txt，填入目標字元。
+  （⚠️ 因原始補習班資料不公開，請使用 自有資料）
 
-3. 執行：
+3. 到CHR_classifier的目錄下
+   ```bash
+   cd CHR_classifier
+   ```
 
-python CHR_classifier.py
+4. 執行分類程式：
+   ```bash
+   python CHR_classifier.py
+   ```
 
-4. 切割後的手寫字跡圖片與偵測可視化結果將會輸出到指定資料夾。
+5. 執行完後，查看輸出結果，切割後的手寫字跡圖片會輸出到指定資料夾。
+    例如：
+    ```
+    ./CHR_classifier/{output_folder}/
+
+    ```
+
+    ```
+    ./CHR_classifier/250928/
+    ```
 
 ---
 

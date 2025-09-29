@@ -12,7 +12,7 @@ It processes scanned images, detects grid structures, classifies characters with
 This project was originally developed for the **WASN Lab cram school program**, where scanned vocabulary practice books were provided.  
 The system serves as a **data labeling and classification tool**, aiming to collect common Traditional Chinese characters for downstream research.  
 
-**Note**: Due to project restrictions, the original cram school dataset is **not publicly available**.  
+⚠️**Note**: Due to project restrictions, the original cram school dataset is **not publicly available**.  
 If you want to use this project, please prepare your **own scanned worksheets or documents** as input. Thank you for your understanding.  
 
 - Current **grid detection & coverage rate**: **99.99%**  
@@ -55,9 +55,10 @@ CHR_classifier
 
 ## 🔧 Requirements
 - Python 3.8+
-- [OpenCV](https://opencv.org/)
-- NumPy
-- [PyTesseract](https://github.com/madmaze/pytesseract)
+- [opencv-python>=4.5.0](https://opencv.org/)
+- numpy>=1.21.0
+- [pytesseract>=0.3.10](https://github.com/madmaze/pytesseract)
+  
   ⚠️ **Important**: Must have **Tesseract OCR installed locally** and set the correct path in your code, e.g.:  
   ```python
   pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -65,12 +66,27 @@ CHR_classifier
 ---
 
 ## 🚀 Usage
-1. Prepare scanned PNG pages inside `data/cramschool_merged/`.
-2. Edit `whitelist.txt` with target characters.  
-3. Run:
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/Daniel930902/CHR_classifier
+   ```
+2. Prepare scanned PDF file inside "pdf" folder or PNG pages inside "data/{pdf/pages name}/".
+
+  ( ⚠️the original dataset is not publicly available. Prepare your **own scanned worksheets or documents** as input. )
+  
+3. Enter the project directory
+   ```bash
+   cd CHR_classifier
+   ```
+4. Run the classifier by the command below:
    ```bash
    python CHR_classifier.py
-4. Cropped handwriting images and debug visualizations will be saved in the specified output directories.
+   ```
+5. Results (cropped handwriting images and debug visualizations) will be saved to:
+    ex.
+    ```
+    ./CHR_classifier/250928/
+    ```
 
 ---
 
